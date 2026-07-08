@@ -1,5 +1,4 @@
 services:
-  # ── Backend (FastAPI) ──────────────────────────────────────────────────────
   - type: web
     name: incubadora-ai-backend
     runtime: python
@@ -8,6 +7,8 @@ services:
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     plan: free
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
       - key: GROQ_API_KEY
         sync: false
       - key: GROQ_MODEL
@@ -21,7 +22,6 @@ services:
       - key: FRONTEND_URL
         sync: false
 
-  # ── Frontend (React + Vite) ────────────────────────────────────────────────
   - type: web
     name: incubadora-ai-frontend
     runtime: node
