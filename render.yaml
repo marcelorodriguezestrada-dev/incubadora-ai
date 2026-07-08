@@ -21,16 +21,14 @@ services:
       - key: FRONTEND_URL
         sync: false
 
-  # ── Frontend (React + Vite como Static Site) ───────────────────────────────
-  - type: static
+  # ── Frontend (React + Vite) ────────────────────────────────────────────────
+  - type: web
     name: incubadora-ai-frontend
+    runtime: node
     rootDir: frontend
     buildCommand: npm install && npm run build
-    staticPublishPath: dist
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
+    startCommand: npx serve dist --listen $PORT
+    plan: free
     envVars:
       - key: VITE_SUPABASE_URL
         sync: false
