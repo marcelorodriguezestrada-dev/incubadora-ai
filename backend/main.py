@@ -10,8 +10,7 @@ import os
 load_dotenv()
 
 # Importar el router unificado que tiene todos los endpoints
-from api.routes_v2 import router
-
+from api.routes import router
 app = FastAPI(
     title="Incubadora AI",
     description="Evaluador e incubadora de emprendimientos con IA — contexto argentino",
