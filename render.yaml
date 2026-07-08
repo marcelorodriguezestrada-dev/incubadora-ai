@@ -1,4 +1,5 @@
 services:
+  # ── Backend (FastAPI) ──────────────────────────────────────────────────────
   - type: web
     name: incubadora-ai-backend
     runtime: python
@@ -18,18 +19,14 @@ services:
       - key: ENVIRONMENT
         value: production
       - key: FRONTEND_URL
-        fromService:
-          name: incubadora-ai-frontend
-          type: web
-          property: host
+        sync: false
 
-  - type: web
+  # ── Frontend (React + Vite como Static Site) ───────────────────────────────
+  - type: static
     name: incubadora-ai-frontend
-    runtime: static
     rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishPath: dist
-    plan: free
     routes:
       - type: rewrite
         source: /*
@@ -40,7 +37,4 @@ services:
       - key: VITE_SUPABASE_ANON_KEY
         sync: false
       - key: VITE_API_URL
-        fromService:
-          name: incubadora-ai-backend
-          type: web
-          property: host
+        sync: false
