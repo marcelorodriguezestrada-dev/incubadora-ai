@@ -3,6 +3,7 @@ import express from 'express'
 import cors from 'cors'
 import { Groq } from 'groq-sdk'
 import { createClient } from '@supabase/supabase-js'
+import { getPlan, puedeEvaluar, incrementarUso, PLANES } from './plans.js'
 
 const app = express()
 app.use(express.json())
@@ -66,6 +67,21 @@ app.get('/health', (req, res) => {
 app.post('/api/evaluar-completo', async (req, res) => {
   const { idea, sector, capital_disponible, plazo_meses = 12 } = req.body
   if (!idea) return res.status(400).json({ error: 'idea requerida' })
+  const userId = await getUserId(req)
+
+  // Verificar si puede evaluar
+  if (userId) {
+    const check = await puedeEvaluar(supabase, userId)
+    if (!check.puede) {
+      return res.status(403).json({
+        error: 'limite_alcanzado',
+        mensaje: `Alcanzaste el límite de ${check.limite} evaluaciones del plan Free este mes.`,
+        plan: check.plan,
+        usadas: check.usadas,
+        limite: check.limite,
+      })
+    }
+  }  
 
   try {
     const contexto = `IDEA: ${idea}\nSECTOR: ${sector || 'No especificado'}\nCAPITAL: ${capital_disponible ? `USD ${capital_disponible}` : 'No especificado'}\nHORIZONTE: ${plazo_meses} meses`
@@ -127,7 +143,7 @@ JSON ESTRICTO:
         resultado.id = data?.id
       } catch (e) { console.error('Error guardando:', e.message) }
     }
-
+    if (userId) await incrementarUso(supabase, userId)
     res.json({ resultado, escenarios })
   } catch (e) {
     console.error('Error evaluar:', e)
@@ -247,6 +263,59 @@ app.get('/api/me', async (req, res) => {
 })
 
 // ── Start ─────────────────────────────────────────────────────────────────────
+
+
+// ── Plan del usuario ──────────────────────────────────────────────────────────
+
+app.get('/api/plan', async (req, res) => {
+  const userId = await getUserId(req)
+  if (!userId) return res.json({ plan: 'free', ...PLANES.free })
+  const plan = await getPlan(supabase, userId)
+  const check = await puedeEvaluar(supabase, userId)
+  res.json({
+    plan,
+    ...PLANES[plan],
+    usadas: check.usadas || 0,
+    restantes: check.restantes,
+  })
+})
+
+// ── Variantes del modelo (solo Pro y Elite) ───────────────────────────────────
+
+app.post('/api/variantes', async (req, res) => {
+  const userId = await getUserId(req)
+  const plan = await getPlan(supabase, userId)
+
+  if (!PLANES[plan].variantes_modelo) {
+    return res.status(403).json({
+      error: 'plan_requerido',
+      mensaje: 'Las variantes del modelo requieren Plan Pro o Elite.',
+      plan_requerido: 'pro',
+    })
+  }
+
+  const { resultado } = req.body
+  if (!resultado) return res.status(400).json({ error: 'resultado requerido' })
+
+  try {
+    const data = await callGroq(
+      `Sos un estratega de negocios especializado en Argentina.
+Dado un modelo de negocio que necesita ajustes, generás 3 variantes alternativas viables.
+Cada variante tiene distinto enfoque: una más conservadora, una igual y una más agresiva.
+JSON ESTRICTO:
+{"variantes":[{"nombre":"","descripcion":"","cambio_clave":"","capex_estimado_usd":0,"roi_estimado_pct":0,"por_que_funciona":""}]}`,
+      `IDEA ORIGINAL: ${resultado.idea_original}
+VEREDICTO: ${resultado.veredicto}
+PROBLEMA PRINCIPAL: ${resultado.financiero?.notas}
+ADVERTENCIAS: ${resultado.mercado?.advertencias?.join(', ')}
+Generá 3 variantes del modelo que sí funcionen.`,
+      2000
+    )
+    res.json(data)
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
 
 const PORT = process.env.PORT || 8000
 app.listen(PORT, () => console.log(`✓ Incubadora AI corriendo en puerto ${PORT}`))
