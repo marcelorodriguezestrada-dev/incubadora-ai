@@ -31,13 +31,38 @@ async function callGroq(system, user, maxTokens = 2000, temp = 0.3) {
     max_tokens: maxTokens,
     temperature: temp,
     messages: [
-      { role: 'system', content: system + '\n\nIMPORTANTE: Respondé ÚNICAMENTE con JSON válido. Sin texto adicional.' },
+      { role: 'system', content: system + '\n\nIMPORTANTE: Respondé ÚNICAMENTE con JSON válido. Sin texto adicional. Sin markdown. Sin caracteres especiales fuera del JSON.' },
       { role: 'user', content: user },
     ],
   })
   const raw = r.choices[0].message.content
-  const match = raw.match(/\{[\s\S]*\}/)
-  return JSON.parse(match ? match[0] : raw)
+
+  // Limpiar el texto antes de parsear
+  let clean = raw
+    .replace(/```json/gi, '')
+    .replace(/```/g, '')
+    .trim()
+
+  // Extraer solo el JSON (entre el primer { y el último })
+  const start = clean.indexOf('{')
+  const end = clean.lastIndexOf('}')
+  if (start !== -1 && end !== -1) {
+    clean = clean.slice(start, end + 1)
+  }
+
+  // Limpiar caracteres problemáticos
+  clean = clean
+    .replace(/[\x00-\x1F\x7F]/g, ' ')  // caracteres de control
+    .replace(/,\s*}/g, '}')              // trailing commas en objetos
+    .replace(/,\s*]/g, ']')              // trailing commas en arrays
+
+  try {
+    return JSON.parse(clean)
+  } catch (e) {
+    console.error('JSON parse error:', e.message)
+    console.error('Raw response:', raw.slice(0, 500))
+    throw new Error(`Groq devolvió JSON inválido: ${e.message}`)
+  }
 }
 
 async function callGroqChat(system, messages, maxTokens = 800) {
