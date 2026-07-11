@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from './hooks/useAuth'
 import AuthScreen from './components/AuthScreen'
 import EscenariosPanel from './components/EscenariosPanel'
@@ -10,20 +10,6 @@ import VariantesModal from './components/VariantesModal'
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const SC = (s) => s >= 70 ? '#00c853' : s >= 50 ? '#ffd740' : '#ff5252'
 const RC = { bajo: '#00c853', medio: '#ffd740', alto: '#ff5252' }
-const [showPricing, setShowPricing] = useState(false)
-const [pricingTrigger, setPricingTrigger] = useState(null)
-const [showVariantes, setShowVariantes] = useState(false)
-const [planInfo, setPlanInfo] = useState({ plan: 'free', restantes: 3 })
-
-useEffect(() => {
-  if (!user) return
-  fetch(`${API}/api/plan`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  })
-    .then(r => r.json())
-    .then(data => setPlanInfo(data))
-    .catch(() => {})
-}, [user, token])
 
 function ScoreRing({ score }) {
   const color = SC(score)
@@ -65,17 +51,34 @@ function RoadmapTimeline({ items }) {
 export default function App() {
   const { user, token, loading: authLoading, email, signOut } = useAuth()
 
-  const [vista, setVista]         = useState('evaluar')
-  const [idea, setIdea]           = useState('')
-  const [sector, setSector]       = useState('')
-  const [capital, setCapital]     = useState('')
-  const [loading, setLoading]     = useState(false)
-  const [resultado, setResultado] = useState(null)
+  // ── Estados ────────────────────────────────────────────────────────────────
+  const [vista, setVista]           = useState('evaluar')
+  const [idea, setIdea]             = useState('')
+  const [sector, setSector]         = useState('')
+  const [capital, setCapital]       = useState('')
+  const [loading, setLoading]       = useState(false)
+  const [resultado, setResultado]   = useState(null)
   const [escenarios, setEscenarios] = useState(null)
-  const [error, setError]         = useState(null)
-  const [tab, setTab]             = useState('financiero')
+  const [error, setError]           = useState(null)
+  const [tab, setTab]               = useState('financiero')
   const [exportando, setExportando] = useState(false)
+  const [showPricing, setShowPricing]     = useState(false)
+  const [pricingTrigger, setPricingTrigger] = useState(null)
+  const [showVariantes, setShowVariantes] = useState(false)
+  const [planInfo, setPlanInfo]     = useState({ plan: 'free', restantes: 3 })
 
+  // ── Cargar plan del usuario ────────────────────────────────────────────────
+  useEffect(() => {
+    if (!user || !token) return
+    fetch(`${API}/api/plan`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.json())
+      .then(data => setPlanInfo(data))
+      .catch(() => {})
+  }, [user, token])
+
+  // ── Auth loading ───────────────────────────────────────────────────────────
   if (authLoading) return (
     <div style={{ minHeight: '100vh', background: '#0a0a0a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ width: 24, height: 24, border: '2px solid #1e1e1e', borderTopColor: '#7c4dff', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
@@ -85,6 +88,7 @@ export default function App() {
 
   if (!user) return <AuthScreen />
 
+  // ── Handlers ───────────────────────────────────────────────────────────────
   const evaluar = async () => {
     if (!idea.trim()) return
     setLoading(true); setError(null); setResultado(null); setEscenarios(null)
@@ -94,11 +98,25 @@ export default function App() {
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ idea, sector: sector || null, capital_disponible: capital ? parseFloat(capital) : null, plazo_meses: 12 }),
       })
+
+      // Límite de plan
+      if (res.status === 403) {
+        const data = await res.json()
+        if (data.error === 'limite_alcanzado') {
+          setPricingTrigger('limite')
+          setShowPricing(true)
+          return
+        }
+      }
+
       if (!res.ok) throw new Error(`Error ${res.status}`)
       const data = await res.json()
       setResultado(data.resultado)
       setEscenarios(data.escenarios)
       setTab('financiero')
+
+      // Actualizar restantes
+      setPlanInfo(prev => ({ ...prev, restantes: Math.max(0, (prev.restantes || 0) - 1) }))
     } catch (e) { setError(e.message) }
     finally { setLoading(false) }
   }
@@ -136,8 +154,28 @@ export default function App() {
     { key: 'roadmap',    label: '🗓 Roadmap' },
   ]
 
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div style={s.root}>
+
+      {/* Modales */}
+      {showPricing && (
+        <PricingModal
+          onClose={() => setShowPricing(false)}
+          planActual={planInfo.plan}
+          trigger={pricingTrigger}
+        />
+      )}
+      {showVariantes && resultado && (
+        <VariantesModal
+          resultado={resultado}
+          apiUrl={API}
+          token={token}
+          onClose={() => setShowVariantes(false)}
+        />
+      )}
+
+      {/* Header */}
       <header style={s.header}>
         <div style={s.logo}>
           <span style={{ color: '#7c4dff' }}>◈ </span>
@@ -153,6 +191,20 @@ export default function App() {
           ))}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {/* Indicador de plan */}
+          {planInfo.plan === 'free' && (
+            <button
+              onClick={() => { setPricingTrigger('feature'); setShowPricing(true) }}
+              style={{ background: 'transparent', border: '1px solid #2a2a2a', color: '#555', padding: '5px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' }}
+            >
+              {planInfo.restantes ?? 3} eval. restantes · Ver planes
+            </button>
+          )}
+          {planInfo.plan !== 'free' && (
+            <span style={{ fontSize: 11, background: 'rgba(124,77,255,0.1)', color: '#7c4dff', padding: '4px 10px', borderRadius: 20, fontWeight: 600 }}>
+              Plan {planInfo.plan?.toUpperCase()}
+            </span>
+          )}
           <span style={{ color: '#333', fontSize: 12 }}>{email}</span>
           <button onClick={signOut} style={{ background: 'transparent', border: '1px solid #1a1a1a', color: '#444', padding: '5px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' }}>Salir</button>
         </div>
@@ -187,7 +239,7 @@ export default function App() {
 
             {resultado && (
               <>
-                {/* Score */}
+                {/* Score global */}
                 <div style={s.card}>
                   <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
                     <ScoreRing score={resultado.score_global} />
@@ -200,7 +252,6 @@ export default function App() {
                       <button style={{ ...s.btnPDF, ...(exportando ? s.dis : {}) }} onClick={exportarPDF} disabled={exportando}>
                         {exportando ? '⟳ Generando...' : '📄 Exportar PDF'}
                       </button>
-                      <div style={{ fontSize: 10, color: '#333' }}>Listo para inversores</div>
                     </div>
                   </div>
                   <div style={s.kpiGrid}>
@@ -220,6 +271,33 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* Banner conversión */}
+                {(resultado.veredicto === 'No viable' || resultado.veredicto === 'Viable con ajustes') && (
+                  <div style={{ background: 'rgba(124,77,255,0.06)', border: '1px solid rgba(124,77,255,0.2)', borderRadius: 12, padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                    <div>
+                      <div style={{ color: '#c4b5fd', fontWeight: 600, fontSize: 14, marginBottom: 4 }}>
+                        💡 Tu idea necesita ajustes — generamos 3 variantes que sí funcionan
+                      </div>
+                      <div style={{ color: '#555', fontSize: 13 }}>
+                        Con Plan Pro el sistema crea alternativas viables del modelo basadas en tu idea
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      {planInfo.plan === 'free' ? (
+                        <button onClick={() => { setPricingTrigger('no_viable'); setShowPricing(true) }}
+                          style={{ background: '#7c4dff', color: '#fff', border: 'none', padding: '9px 18px', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: 13, fontFamily: 'inherit' }}>
+                          Ver planes →
+                        </button>
+                      ) : (
+                        <button onClick={() => setShowVariantes(true)}
+                          style={{ background: '#7c4dff', color: '#fff', border: 'none', padding: '9px 18px', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: 13, fontFamily: 'inherit' }}>
+                          🔄 Generar variantes
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* Tabs */}
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                   {TABS.map(t => (
@@ -230,7 +308,6 @@ export default function App() {
                   ))}
                 </div>
 
-                {/* Tab: Financiero */}
                 {tab === 'financiero' && (
                   <div style={s.card}>
                     <div style={s.cardTitle}>Análisis financiero</div>
@@ -253,7 +330,6 @@ export default function App() {
                   </div>
                 )}
 
-                {/* Tab: Mercado */}
                 {tab === 'mercado' && (
                   <div style={s.card}>
                     <div style={s.cardTitle}>Análisis de mercado</div>
@@ -283,7 +359,6 @@ export default function App() {
                   </div>
                 )}
 
-                {/* Tab: Escenarios */}
                 {tab === 'escenarios' && (
                   <div style={s.card}>
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:18 }}>
@@ -294,7 +369,6 @@ export default function App() {
                   </div>
                 )}
 
-                {/* Tab: Roadmap */}
                 {tab === 'roadmap' && (
                   <div style={s.card}>
                     <div style={s.cardTitle}>Plan de ejecución — 8 semanas al MVP</div>
@@ -315,7 +389,6 @@ export default function App() {
                   </div>
                 )}
 
-                {/* Chat */}
                 <ChatCofundador resultado={resultado} escenarios={escenarios} apiUrl={API} />
               </>
             )}
