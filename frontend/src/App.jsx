@@ -4,10 +4,26 @@ import AuthScreen from './components/AuthScreen'
 import EscenariosPanel from './components/EscenariosPanel'
 import ChatCofundador from './components/ChatCofundador'
 import HistorialPanel from './components/HistorialPanel'
+import PricingModal from './components/PricingModal'
+import VariantesModal from './components/VariantesModal'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const SC = (s) => s >= 70 ? '#00c853' : s >= 50 ? '#ffd740' : '#ff5252'
 const RC = { bajo: '#00c853', medio: '#ffd740', alto: '#ff5252' }
+const [showPricing, setShowPricing] = useState(false)
+const [pricingTrigger, setPricingTrigger] = useState(null)
+const [showVariantes, setShowVariantes] = useState(false)
+const [planInfo, setPlanInfo] = useState({ plan: 'free', restantes: 3 })
+
+useEffect(() => {
+  if (!user) return
+  fetch(`${API}/api/plan`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+    .then(r => r.json())
+    .then(data => setPlanInfo(data))
+    .catch(() => {})
+}, [user, token])
 
 function ScoreRing({ score }) {
   const color = SC(score)
