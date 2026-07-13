@@ -164,6 +164,8 @@ export default function App() {
           onClose={() => setShowPricing(false)}
           planActual={planInfo.plan}
           trigger={pricingTrigger}
+          token={token}
+          email={email}
         />
       )}
       {showVariantes && resultado && (
