@@ -1,7 +1,6 @@
 // ── MercadoPago ───────────────────────────────────────────────────────────────
 // Agregá esto en server.js después del import de plans.js
 
-import { MercadoPagoConfig, Preference, Payment } from 'mercadopago'
 
 const mp = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN })
 
