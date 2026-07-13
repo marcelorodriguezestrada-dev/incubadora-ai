@@ -1,186 +1,159 @@
-const PLANES = [
-  {
-    key: 'free',
-    nombre: 'Free',
-    precio: '$0',
-    periodo: 'siempre',
-    color: '#666',
-    border: '#2a2a2a',
-    features: [
-      '3 evaluaciones por mes',
-      'Análisis financiero básico',
-      '3 escenarios inflacionarios',
-      'Roadmap de 8 semanas',
-    ],
-    noIncluye: [
-      'Historial de evaluaciones',
-      'Exportar PDF',
-      'Chat co-fundador IA',
-      'Variantes del modelo',
-      'Seguimiento semanal',
-    ],
-    cta: 'Plan actual',
-    disabled: true,
+// ── MercadoPago ───────────────────────────────────────────────────────────────
+// Agregá esto en server.js después del import de plans.js
+
+import { MercadoPagoConfig, Preference, Payment } from 'mercadopago'
+
+const mp = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN })
+
+const MP_PLANES = {
+  pro: {
+    title: 'Incubadora AI — Plan Pro',
+    unit_price: 15,
+    currency_id: 'USD',
   },
-  {
-    key: 'pro',
-    nombre: 'Pro',
-    precio: 'USD 15',
-    periodo: '/mes',
-    color: '#7c4dff',
-    border: '#7c4dff',
-    badge: '⭐ Más popular',
-    features: [
-      'Evaluaciones ilimitadas',
-      'Historial + comparativa',
-      'Exportar PDF ejecutivo',
-      'Chat co-fundador IA',
-      '3 variantes del modelo',
-      'Análisis detallado',
-    ],
-    noIncluye: [
-      'Seguimiento semanal',
-      'Alertas por Telegram',
-    ],
-    cta: 'Empezar Pro',
-    disabled: false,
+  elite: {
+    title: 'Incubadora AI — Plan Elite',
+    unit_price: 49,
+    currency_id: 'USD',
   },
-  {
-    key: 'elite',
-    nombre: 'Elite',
-    precio: 'USD 49',
-    periodo: '/mes',
-    color: '#00c853',
-    border: '#00c853',
-    badge: '🚀 Acelerador',
-    features: [
-      'Todo lo de Pro',
-      'Seguimiento semanal del roadmap',
-      'Alertas por Telegram',
-      'Benchmark contra otras ideas',
-      'Recursos curados por industria',
-      'Soporte prioritario',
-    ],
-    noIncluye: [],
-    cta: 'Empezar Elite',
-    disabled: false,
-  },
-]
-
-export default function PricingModal({ onClose, planActual = 'free', trigger = null }) {
-  return (
-    <div style={s.overlay} onClick={onClose}>
-      <div style={s.modal} onClick={e => e.stopPropagation()}>
-
-        {/* Header */}
-        <div style={s.header}>
-          <div>
-            {trigger === 'limite' && (
-              <div style={s.triggerBadge}>
-                ⚠ Alcanzaste el límite del plan Free
-              </div>
-            )}
-            {trigger === 'feature' && (
-              <div style={s.triggerBadge}>
-                🔒 Esta función requiere un plan pago
-              </div>
-            )}
-            {trigger === 'no_viable' && (
-              <div style={{ ...s.triggerBadge, background: 'rgba(255,82,82,0.1)', borderColor: 'rgba(255,82,82,0.3)', color: '#ff8a80' }}>
-                💡 Tu idea necesita ajustes — con Pro generamos 3 variantes que sí funcionan
-              </div>
-            )}
-            <div style={s.title}>Elegí tu plan</div>
-            <div style={s.subtitle}>Cancelás cuando quieras · Sin compromisos</div>
-          </div>
-          <button onClick={onClose} style={s.closeBtn}>✕</button>
-        </div>
-
-        {/* Planes */}
-        <div style={s.planesGrid}>
-          {PLANES.map(plan => (
-            <div key={plan.key} style={{
-              ...s.planCard,
-              borderColor: planActual === plan.key ? plan.color : plan.border,
-              background: planActual === plan.key ? `${plan.color}08` : '#111',
-            }}>
-              {plan.badge && (
-                <div style={{ ...s.badge, color: plan.color, borderColor: `${plan.color}44`, background: `${plan.color}11` }}>
-                  {plan.badge}
-                </div>
-              )}
-              {planActual === plan.key && (
-                <div style={{ ...s.badge, color: '#666', borderColor: '#2a2a2a', background: '#1a1a1a' }}>
-                  Plan actual
-                </div>
-              )}
-
-              <div style={s.planNombre}>{plan.nombre}</div>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 20 }}>
-                <span style={{ ...s.planPrecio, color: plan.color }}>{plan.precio}</span>
-                <span style={s.planPeriodo}>{plan.periodo}</span>
-              </div>
-
-              {/* Features incluidas */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-                {plan.features.map((f, i) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-                    <span style={{ color: plan.color, fontSize: 14 }}>✓</span>
-                    <span style={{ color: '#bbb' }}>{f}</span>
-                  </div>
-                ))}
-                {plan.noIncluye.map((f, i) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-                    <span style={{ color: '#333', fontSize: 14 }}>✕</span>
-                    <span style={{ color: '#444' }}>{f}</span>
-                  </div>
-                ))}
-              </div>
-
-              <button
-                onClick={() => plan.key !== 'free' && alert(`Próximamente — integración con Stripe para plan ${plan.nombre}`)}
-                disabled={plan.disabled || planActual === plan.key}
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  borderRadius: 8,
-                  border: `1px solid ${plan.color}`,
-                  background: plan.disabled || planActual === plan.key ? 'transparent' : plan.color,
-                  color: plan.disabled || planActual === plan.key ? plan.color : '#fff',
-                  fontWeight: 700,
-                  fontSize: 13,
-                  cursor: plan.disabled || planActual === plan.key ? 'default' : 'pointer',
-                  fontFamily: 'inherit',
-                  opacity: plan.disabled || planActual === plan.key ? 0.5 : 1,
-                }}
-              >
-                {planActual === plan.key ? '✓ Plan actual' : plan.cta}
-              </button>
-            </div>
-          ))}
-        </div>
-
-        <div style={s.footer}>
-          Pagos seguros con Stripe · Cancelás cuando quieras · Precios en USD
-        </div>
-      </div>
-    </div>
-  )
 }
 
-const s = {
-  overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 },
-  modal: { background: '#0d0d0d', border: '1px solid #1a1a1a', borderRadius: 16, width: '100%', maxWidth: 860, maxHeight: '90vh', overflow: 'auto' },
-  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '24px 28px 20px', borderBottom: '1px solid #1a1a1a' },
-  triggerBadge: { background: 'rgba(124,77,255,0.1)', border: '1px solid rgba(124,77,255,0.3)', color: '#c4b5fd', padding: '6px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12 },
-  title: { color: '#fff', fontWeight: 800, fontSize: 20, marginBottom: 4 },
-  subtitle: { color: '#444', fontSize: 13 },
-  closeBtn: { background: 'transparent', border: 'none', color: '#444', fontSize: 20, cursor: 'pointer' },
-  planesGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, padding: '24px 28px' },
-  planCard: { border: '1px solid', borderRadius: 12, padding: '20px 18px', display: 'flex', flexDirection: 'column' },
-  badge: { fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, border: '1px solid', width: 'fit-content', marginBottom: 12 },
-  planNombre: { color: '#fff', fontWeight: 700, fontSize: 16, marginBottom: 6 },
-  planPrecio: { fontSize: 26, fontWeight: 800 },
-  planPeriodo: { color: '#555', fontSize: 13 },
-  footer: { padding: '16px 28px', borderTop: '1px solid #1a1a1a', color: '#333', fontSize: 12, textAlign: 'center' },
-}
+// ── Crear preferencia de pago ─────────────────────────────────────────────────
+app.post('/api/mp/crear-preferencia', async (req, res) => {
+  const userId = getUserId(req)
+  if (!userId) return res.status(401).json({ error: 'No autenticado' })
+
+  const { plan } = req.body
+  if (!MP_PLANES[plan]) return res.status(400).json({ error: 'Plan inválido' })
+
+  const planData = MP_PLANES[plan]
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173'
+
+  try {
+    const preference = new Preference(mp)
+    const result = await preference.create({
+      body: {
+        items: [{
+          title: planData.title,
+          quantity: 1,
+          unit_price: planData.unit_price,
+          currency_id: planData.currency_id,
+        }],
+        payer: { email: req.body.email || '' },
+        back_urls: {
+          success: `${frontendUrl}/pago-exitoso?plan=${plan}&userId=${userId}`,
+          failure: `${frontendUrl}/pago-fallido`,
+          pending: `${frontendUrl}/pago-pendiente`,
+        },
+        auto_return: 'approved',
+        external_reference: `${userId}|${plan}`,
+        notification_url: `${process.env.BACKEND_URL}/api/mp/webhook`,
+      }
+    })
+
+    res.json({
+      preference_id: result.id,
+      init_point: result.init_point,      // URL de pago producción
+      sandbox_init_point: result.sandbox_init_point, // URL de pago sandbox
+    })
+  } catch (e) {
+    console.error('[MP] Error creando preferencia:', e)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// ── Webhook de MercadoPago ────────────────────────────────────────────────────
+app.post('/api/mp/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  const { type, data } = req.body
+
+  if (type !== 'payment') return res.sendStatus(200)
+
+  try {
+    const payment = new Payment(mp)
+    const pago = await payment.get({ id: data.id })
+
+    console.log('[MP] Pago recibido:', {
+      id: pago.id,
+      status: pago.status,
+      external_reference: pago.external_reference,
+    })
+
+    if (pago.status !== 'approved') return res.sendStatus(200)
+
+    // external_reference = "userId|plan"
+    const [userId, plan] = (pago.external_reference || '').split('|')
+    if (!userId || !plan) return res.sendStatus(200)
+
+    // Calcular vencimiento (1 mes)
+    const vence = new Date()
+    vence.setMonth(vence.getMonth() + 1)
+
+    // Guardar en Supabase
+    const { error } = await supabase
+      .from('suscripciones')
+      .upsert({
+        user_id: userId,
+        plan,
+        status: 'active',
+        mp_payment_id: String(pago.id),
+        mp_external_reference: pago.external_reference,
+        vence_en: vence.toISOString(),
+        actualizado_en: new Date().toISOString(),
+      }, { onConflict: 'user_id' })
+
+    if (error) console.error('[MP] Error guardando suscripción:', error)
+    else console.log(`[MP] ✓ Plan ${plan} activado para usuario ${userId}`)
+
+    res.sendStatus(200)
+  } catch (e) {
+    console.error('[MP] Error procesando webhook:', e)
+    res.sendStatus(500)
+  }
+})
+
+// ── Estado de suscripción ─────────────────────────────────────────────────────
+app.get('/api/mp/suscripcion', async (req, res) => {
+  const userId = getUserId(req)
+  if (!userId) return res.status(401).json({ error: 'No autenticado' })
+
+  try {
+    const { data } = await supabase
+      .from('suscripciones')
+      .select('plan, status, vence_en, actualizado_en')
+      .eq('user_id', userId)
+      .single()
+
+    if (!data) return res.json({ plan: 'free', status: 'none' })
+
+    // Verificar si venció
+    const vencido = data.vence_en && new Date(data.vence_en) < new Date()
+    if (vencido && data.status === 'active') {
+      await supabase
+        .from('suscripciones')
+        .update({ status: 'expired' })
+        .eq('user_id', userId)
+      return res.json({ plan: 'free', status: 'expired' })
+    }
+
+    res.json(data)
+  } catch {
+    res.json({ plan: 'free', status: 'none' })
+  }
+})
+
+// ── Cancelar suscripción ──────────────────────────────────────────────────────
+app.post('/api/mp/cancelar', async (req, res) => {
+  const userId = getUserId(req)
+  if (!userId) return res.status(401).json({ error: 'No autenticado' })
+
+  try {
+    await supabase
+      .from('suscripciones')
+      .update({ status: 'cancelled', actualizado_en: new Date().toISOString() })
+      .eq('user_id', userId)
+
+    res.json({ ok: true, mensaje: 'Suscripción cancelada. Podés seguir usando el plan hasta que venza.' })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
