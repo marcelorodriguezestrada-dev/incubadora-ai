@@ -500,5 +500,70 @@ app.post('/api/mp/cancelar', async (req, res) => {
     res.status(500).json({ error: e.message })
   }
 })
+// ── Admin ────────────────────────────────────────────────────────────────────
+
+app.post(`/api/admin/set-plan`, async (req, res) => {
+  const adminSecret = req.headers[`x-admin-secret`]
+  if (adminSecret !== process.env.ADMIN_SECRET) {
+    return res.status(401).json({ error: `No autorizado` })
+  }
+
+  const { user_id, plan } = req.body
+  if (!user_id || !plan) return res.status(400).json({ error: `user_id y plan requeridos` })
+  if (!PLANES[plan]) return res.status(400).json({ error: `Plan inválido. Opciones: free, pro, elite` })
+
+  try {
+    const vence = new Date()
+    vence.setFullYear(vence.getFullYear() + 10) // 10 años = prácticamente indefinido
+
+    const { error } = await supabase
+      .from(`suscripciones`)
+      .upsert({
+        user_id,
+        plan,
+        status: `active`,
+        mp_payment_id: `admin`,
+        mp_external_reference: `admin`,
+        vence_en: vence.toISOString(),
+        actualizado_en: new Date().toISOString(),
+      }, { onConflict: `user_id` })
+
+    if (error) throw error
+    console.log(`[ADMIN] Plan ${plan} asignado a ${user_id}`)
+    res.json({ ok: true, user_id, plan, vence_en: vence.toISOString() })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+app.get(`/api/admin/usuarios`, async (req, res) => {
+  const adminSecret = req.headers[`x-admin-secret`]
+  if (adminSecret !== process.env.ADMIN_SECRET) {
+    return res.status(401).json({ error: `No autorizado` })
+  }
+
+  try {
+    const { data: subs } = await supabase
+      .from(`suscripciones`)
+      .select(`*`)
+      .order(`actualizado_en`, { ascending: false })
+
+    const { data: uso } = await supabase
+      .from(`uso_mensual`)
+      .select(`*`)
+      .eq(`mes`, new Date().toISOString().slice(0, 7))
+
+    const { data: evals } = await supabase
+      .from(`evaluaciones`)
+      .select(`user_id, created_at`)
+      .order(`created_at`, { ascending: false })
+      .limit(200)
+
+    res.json({ suscripciones: subs || [], uso_mes: uso || [], evaluaciones_recientes: evals || [] })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
 const PORT = process.env.PORT || 8000
 app.listen(PORT, () => console.log(`✓ Incubadora AI corriendo en puerto ${PORT}`))
