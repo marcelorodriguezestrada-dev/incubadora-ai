@@ -51,7 +51,6 @@ function RoadmapTimeline({ items }) {
 export default function App() {
   const { user, token, loading: authLoading, email, signOut } = useAuth()
 
-  // ── Estados ────────────────────────────────────────────────────────────────
   const [vista, setVista]           = useState('evaluar')
   const [idea, setIdea]             = useState('')
   const [sector, setSector]         = useState('')
@@ -66,19 +65,28 @@ export default function App() {
   const [pricingTrigger, setPricingTrigger] = useState(null)
   const [showVariantes, setShowVariantes] = useState(false)
   const [planInfo, setPlanInfo]     = useState({ plan: 'free', restantes: 3 })
+  const [showAuth, setShowAuth]     = useState(false)
+  const [authMotive, setAuthMotive] = useState(null)
 
-  // ── Cargar plan del usuario ────────────────────────────────────────────────
   useEffect(() => {
     if (!user || !token) return
-    fetch(`${API}/api/plan`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    fetch(`${API}/api/plan`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
       .then(data => setPlanInfo(data))
       .catch(() => {})
+    // Si el usuario se registró y hay resultado guardado en localStorage, migrar
+    const savedRes = localStorage.getItem('incubadora_resultado')
+    if (savedRes) {
+      try {
+        const { resultado: r, escenarios: e } = JSON.parse(savedRes)
+        setResultado(r); setEscenarios(e)
+        localStorage.removeItem('incubadora_resultado')
+      } catch {}
+    }
   }, [user, token])
 
-  // ── Auth loading ───────────────────────────────────────────────────────────
+  const pedirLogin = (motivo) => { setAuthMotive(motivo); setShowAuth(true) }
+
   if (authLoading) return (
     <div style={{ minHeight: '100vh', background: '#0a0a0a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ width: 24, height: 24, border: '2px solid #1e1e1e', borderTopColor: '#7c4dff', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
@@ -86,9 +94,34 @@ export default function App() {
     </div>
   )
 
-  if (!user) return <AuthScreen />
+  // Modal de auth inline — sin salir de la app
+  if (showAuth && !user) return (
+    <div style={{ minHeight: '100vh', background: '#0a0a0a', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div style={{ background: '#0d0d0d', border: '1px solid #1a1a1a', borderRadius: 16, padding: '32px 28px', width: '100%', maxWidth: 420 }}>
+        <button onClick={() => setShowAuth(false)}
+          style={{ background: 'transparent', border: 'none', color: '#555', fontSize: 13, cursor: 'pointer', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 6 }}>
+          ← Volver al análisis
+        </button>
+        {authMotive === 'guardar' && (
+          <div style={{ background: 'rgba(124,77,255,0.08)', border: '1px solid rgba(124,77,255,0.2)', borderRadius: 8, padding: '10px 14px', marginBottom: 20, color: '#c4b5fd', fontSize: 13 }}>
+            💾 Registrate gratis para guardar este análisis
+          </div>
+        )}
+        {authMotive === 'historial' && (
+          <div style={{ background: 'rgba(124,77,255,0.08)', border: '1px solid rgba(124,77,255,0.2)', borderRadius: 8, padding: '10px 14px', marginBottom: 20, color: '#c4b5fd', fontSize: 13 }}>
+            📋 Registrate para ver tu historial de evaluaciones
+          </div>
+        )}
+        {authMotive === 'premium' && (
+          <div style={{ background: 'rgba(124,77,255,0.08)', border: '1px solid rgba(124,77,255,0.2)', borderRadius: 8, padding: '10px 14px', marginBottom: 20, color: '#c4b5fd', fontSize: 13 }}>
+            ⭐ Registrate para desbloquear esta función
+          </div>
+        )}
+        <AuthScreen />
+      </div>
+    </div>
+  )
 
-  // ── Handlers ───────────────────────────────────────────────────────────────
   const evaluar = async () => {
     if (!idea.trim()) return
     setLoading(true); setError(null); setResultado(null); setEscenarios(null)
@@ -99,23 +132,22 @@ export default function App() {
         body: JSON.stringify({ idea, sector: sector || null, capital_disponible: capital ? parseFloat(capital) : null, plazo_meses: 12 }),
       })
 
-      // Límite de plan
       if (res.status === 403) {
         const data = await res.json()
         if (data.error === 'limite_alcanzado') {
-          setPricingTrigger('limite')
-          setShowPricing(true)
-          return
+          setPricingTrigger('limite'); setShowPricing(true); return
         }
       }
 
       if (!res.ok) throw new Error(`Error ${res.status}`)
       const data = await res.json()
-      setResultado(data.resultado)
-      setEscenarios(data.escenarios)
-      setTab('financiero')
+      setResultado(data.resultado); setEscenarios(data.escenarios); setTab('financiero')
 
-      // Actualizar restantes
+      // Guardar en localStorage para usuarios no registrados
+      if (!user) {
+        localStorage.setItem('incubadora_resultado', JSON.stringify({ resultado: data.resultado, escenarios: data.escenarios }))
+      }
+
       setPlanInfo(prev => ({ ...prev, restantes: Math.max(0, (prev.restantes || 0) - 1) }))
     } catch (e) { setError(e.message) }
     finally { setLoading(false) }
@@ -123,6 +155,7 @@ export default function App() {
 
   const exportarPDF = async () => {
     if (!resultado) return
+    if (!user) { pedirLogin('premium'); return }
     setExportando(true)
     try {
       const res = await fetch(`${API}/api/pdf-directo`, {
@@ -154,30 +187,17 @@ export default function App() {
     { key: 'roadmap',    label: '🗓 Roadmap' },
   ]
 
-  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div style={s.root}>
 
-      {/* Modales */}
       {showPricing && (
-        <PricingModal
-          onClose={() => setShowPricing(false)}
-          planActual={planInfo.plan}
-          trigger={pricingTrigger}
-          token={token}
-          email={email}
-        />
+        <PricingModal onClose={() => setShowPricing(false)} planActual={planInfo.plan}
+          trigger={pricingTrigger} token={token} email={email} />
       )}
       {showVariantes && resultado && (
-        <VariantesModal
-          resultado={resultado}
-          apiUrl={API}
-          token={token}
-          onClose={() => setShowVariantes(false)}
-        />
+        <VariantesModal resultado={resultado} apiUrl={API} token={token} onClose={() => setShowVariantes(false)} />
       )}
 
-      {/* Header */}
       <header style={s.header}>
         <div style={s.logo}>
           <span style={{ color: '#7c4dff' }}>◈ </span>
@@ -186,37 +206,62 @@ export default function App() {
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
           {[{ key: 'evaluar', label: '◈ Evaluar' }, { key: 'historial', label: '📋 Historial' }].map(v => (
-            <button key={v.key} onClick={() => setVista(v.key)}
+            <button key={v.key}
+              onClick={() => v.key === 'historial' && !user ? pedirLogin('historial') : setVista(v.key)}
               style={{ background: 'transparent', border: `1px solid ${vista===v.key?'#7c4dff':'#1a1a1a'}`, color: vista===v.key?'#c4b5fd':'#444', padding: '6px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontFamily: 'inherit' }}>
               {v.label}
             </button>
           ))}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {/* Indicador de plan */}
-          {planInfo.plan === 'free' && (
-            <button
-              onClick={() => { setPricingTrigger('feature'); setShowPricing(true) }}
-              style={{ background: 'transparent', border: '1px solid #2a2a2a', color: '#555', padding: '5px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' }}
-            >
-              {planInfo.restantes ?? 3} eval. restantes · Ver planes
-            </button>
+          {user ? (
+            <>
+              {planInfo.plan === 'free' && (
+                <button onClick={() => { setPricingTrigger('feature'); setShowPricing(true) }}
+                  style={{ background: 'transparent', border: '1px solid #2a2a2a', color: '#555', padding: '5px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' }}>
+                  {planInfo.restantes ?? 3} eval. restantes · Ver planes
+                </button>
+              )}
+              {planInfo.plan !== 'free' && (
+                <span style={{ fontSize: 11, background: 'rgba(124,77,255,0.1)', color: '#7c4dff', padding: '4px 10px', borderRadius: 20, fontWeight: 600 }}>
+                  Plan {planInfo.plan?.toUpperCase()}
+                </span>
+              )}
+              <span style={{ color: '#333', fontSize: 12 }}>{email}</span>
+              <button onClick={signOut} style={{ background: 'transparent', border: '1px solid #1a1a1a', color: '#444', padding: '5px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' }}>Salir</button>
+            </>
+          ) : (
+            <>
+              <button onClick={() => pedirLogin('guardar')}
+                style={{ background: 'transparent', border: '1px solid #2a2a2a', color: '#666', padding: '5px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' }}>
+                Ingresar
+              </button>
+              <button onClick={() => pedirLogin('guardar')}
+                style={{ background: '#7c4dff', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 700, fontFamily: 'inherit' }}>
+                Registrarse gratis
+              </button>
+            </>
           )}
-          {planInfo.plan !== 'free' && (
-            <span style={{ fontSize: 11, background: 'rgba(124,77,255,0.1)', color: '#7c4dff', padding: '4px 10px', borderRadius: 20, fontWeight: 600 }}>
-              Plan {planInfo.plan?.toUpperCase()}
-            </span>
-          )}
-          <span style={{ color: '#333', fontSize: 12 }}>{email}</span>
-          <button onClick={signOut} style={{ background: 'transparent', border: '1px solid #1a1a1a', color: '#444', padding: '5px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' }}>Salir</button>
         </div>
       </header>
 
       <main style={s.main}>
 
-        {/* ── Vista Evaluar ── */}
         {vista === 'evaluar' && (
           <>
+            {/* Hero para usuarios no registrados */}
+            {!user && !resultado && (
+              <div style={{ textAlign: 'center', padding: '32px 0 16px' }}>
+                <div style={{ fontSize: 13, color: '#7c4dff', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 12 }}>◈ incubadora.ai</div>
+                <h1 style={{ color: '#fff', fontSize: 32, fontWeight: 800, lineHeight: 1.2, marginBottom: 12 }}>
+                  Evaluá tu idea de negocio<br/>con inteligencia artificial
+                </h1>
+                <p style={{ color: '#555', fontSize: 15, maxWidth: 480, margin: '0 auto' }}>
+                  Análisis financiero, de mercado, escenarios inflacionarios y roadmap en segundos. Sin registro.
+                </p>
+              </div>
+            )}
+
             <div style={s.card}>
               <div style={s.cardTitle}>¿Cuál es tu idea?</div>
               <textarea style={s.textarea} value={idea} onChange={e => setIdea(e.target.value)}
@@ -241,7 +286,19 @@ export default function App() {
 
             {resultado && (
               <>
-                {/* Score global */}
+                {/* CTA guardar para no registrados */}
+                {!user && (
+                  <div style={{ background: 'rgba(124,77,255,0.06)', border: '1px solid rgba(124,77,255,0.2)', borderRadius: 12, padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                    <div style={{ color: '#c4b5fd', fontSize: 13 }}>
+                      💾 <strong>Registrate gratis</strong> para guardar este análisis, ver tu historial y acceder a funciones premium
+                    </div>
+                    <button onClick={() => pedirLogin('guardar')}
+                      style={{ background: '#7c4dff', color: '#fff', border: 'none', padding: '8px 18px', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: 13, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+                      Crear cuenta gratis →
+                    </button>
+                  </div>
+                )}
+
                 <div style={s.card}>
                   <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
                     <ScoreRing score={resultado.score_global} />
@@ -273,19 +330,21 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Banner conversión */}
                 {(resultado.veredicto === 'No viable' || resultado.veredicto === 'Viable con ajustes') && (
                   <div style={{ background: 'rgba(124,77,255,0.06)', border: '1px solid rgba(124,77,255,0.2)', borderRadius: 12, padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
                     <div>
                       <div style={{ color: '#c4b5fd', fontWeight: 600, fontSize: 14, marginBottom: 4 }}>
                         💡 Tu idea necesita ajustes — generamos 3 variantes que sí funcionan
                       </div>
-                      <div style={{ color: '#555', fontSize: 13 }}>
-                        Con Plan Pro el sistema crea alternativas viables del modelo basadas en tu idea
-                      </div>
+                      <div style={{ color: '#555', fontSize: 13 }}>Con Plan Pro el sistema crea alternativas viables del modelo basadas en tu idea</div>
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      {planInfo.plan === 'free' ? (
+                      {!user ? (
+                        <button onClick={() => pedirLogin('premium')}
+                          style={{ background: '#7c4dff', color: '#fff', border: 'none', padding: '9px 18px', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: 13, fontFamily: 'inherit' }}>
+                          Registrate y ver planes →
+                        </button>
+                      ) : planInfo.plan === 'free' ? (
                         <button onClick={() => { setPricingTrigger('no_viable'); setShowPricing(true) }}
                           style={{ background: '#7c4dff', color: '#fff', border: 'none', padding: '9px 18px', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: 13, fontFamily: 'inherit' }}>
                           Ver planes →
@@ -300,7 +359,6 @@ export default function App() {
                   </div>
                 )}
 
-                {/* Tabs */}
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                   {TABS.map(t => (
                     <button key={t.key} onClick={() => setTab(t.key)}
@@ -391,14 +449,26 @@ export default function App() {
                   </div>
                 )}
 
-                <ChatCofundador resultado={resultado} escenarios={escenarios} apiUrl={API} />
+                {user
+                  ? <ChatCofundador resultado={resultado} escenarios={escenarios} apiUrl={API} />
+                  : (
+                    <div style={{ ...s.card, textAlign: 'center' }}>
+                      <div style={{ fontSize: 24, marginBottom: 10 }}>💬</div>
+                      <div style={{ color: '#fff', fontWeight: 600, marginBottom: 6 }}>Chat con el co-fundador IA</div>
+                      <div style={{ color: '#555', fontSize: 13, marginBottom: 16 }}>Preguntale cualquier cosa sobre tu negocio. Disponible para usuarios registrados.</div>
+                      <button onClick={() => pedirLogin('premium')}
+                        style={{ background: '#7c4dff', color: '#fff', border: 'none', padding: '9px 20px', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: 13, fontFamily: 'inherit' }}>
+                        Registrate gratis para chatear →
+                      </button>
+                    </div>
+                  )
+                }
               </>
             )}
           </>
         )}
 
-        {/* ── Vista Historial ── */}
-        {vista === 'historial' && (
+        {vista === 'historial' && user && (
           <div style={s.card}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:18 }}>
               <div style={s.cardTitle}>Mis evaluaciones</div>
